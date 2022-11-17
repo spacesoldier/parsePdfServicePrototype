@@ -1,0 +1,11 @@
+version: '3.9'
+services:
+  pdfservice:
+    image: silviosalgari/pdf-parser-service-proto:latest
+    ports:
+      - 8080:8080
+
+networks:
+  default:
+    external:
+      name: leadersnet
