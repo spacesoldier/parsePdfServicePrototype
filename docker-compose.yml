@@ -2,8 +2,9 @@ version: '3.9'
 services:
   pdfservice:
     image: silviosalgari/pdf-parser-service-proto:latest
+    container_name: pdf-parsing-proto
     ports:
-      - 8080:8080
+      - "8080:8080"
 
 networks:
   default:
