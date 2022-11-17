@@ -79,6 +79,17 @@ public class IntlayerObjectRouter {
         }
     }
 
+    private Map<Class,BiFunction<Object,RoutedObjectEnvelope,RoutedObjectEnvelope>> envelopeAggr = new ConcurrentHashMap<>();
+
+    public void addEnvelopeAggregation(
+            Class typeToApplyAggregator,
+            BiFunction<Object,RoutedObjectEnvelope,RoutedObjectEnvelope> envelopeAggregator
+    ){
+        if (!envelopeAggr.containsKey(typeToApplyAggregator)){
+            envelopeAggr.put(typeToApplyAggregator,envelopeAggregator);
+        }
+    }
+
     private String routerInitLogMsgTemplate = "[ROUTER]: add routable unit %s";
     public void addRoutableFunction(
             Class typeToRoute,
@@ -232,12 +243,26 @@ public class IntlayerObjectRouter {
         return envelope;
     }
 
+    private RoutedObjectEnvelope envelopeAggregation(RoutedObjectEnvelope envelope){
+
+        Class payloadType = envelope.getPayload().getClass();
+
+        if (envelopeAggr.containsKey(payloadType)){
+            RoutedObjectEnvelope newEnvelope = envelopeAggr.get(payloadType).apply(envelope.getPayload(),envelope);
+        }
+
+        return envelope;
+    }
+
     private void routeBasicPayload(RoutedObjectEnvelope incomingEnvelope) {
         // sometimes we could want to aggregate the payload with envelope data
         // for example to add requestId for some purpose
         RoutedObjectEnvelope envelope = postProcessPayload(incomingEnvelope);
+        // sometimes we could need to restore original request id in outgoing envelope
+        // for example after some aggregation stage in business logic
+        RoutedObjectEnvelope finalEnvelope = envelopeAggregation(envelope);
 
-        Class routingType = envelope.getPayload().getClass();
+        Class routingType = finalEnvelope.getPayload().getClass();
 
         List<Consumer> sinks = new ArrayList<>();
 
@@ -265,16 +290,16 @@ public class IntlayerObjectRouter {
             // we did not find any receiver for the object among channel names,
             // so we return the object to the adapter which sent it here
             // finding a sink by envelope's request id
-            Consumer sinkById = sinkByRqIdProvider.apply(envelope.getRqId());
+            Consumer sinkById = sinkByRqIdProvider.apply(finalEnvelope.getRqId());
             if (sinkById != null){
                 // we unwrap the envelope because the receiver
                 // definitely knows the request id
-                sinkById.accept(envelope.getPayload());
+                sinkById.accept(finalEnvelope.getPayload());
             }
         } else {
             // and finally we throw our envelope to all receivers found
             sinks.forEach(
-                    sink -> sink.accept(envelope)
+                    sink -> sink.accept(finalEnvelope)
             );
         }
     }

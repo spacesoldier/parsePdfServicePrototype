@@ -9,7 +9,12 @@ springdoc:
     path: /api/get-full-specs
     enabled: true
 
+server:
+  port: 8082
+
 spring:
+  codec:
+    max-in-memory-size: 50000KB
   jackson:
     serialization:
       fail-on-empty-beans: false    # in this example project we build an empty DTO with no fields

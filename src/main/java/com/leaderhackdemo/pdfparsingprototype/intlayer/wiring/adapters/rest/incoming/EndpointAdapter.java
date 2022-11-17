@@ -6,8 +6,12 @@ import lombok.NonNull;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.codec.multipart.Part;
+import org.springframework.util.MultiValueMap;
+import org.springframework.web.reactive.function.BodyExtractors;
 import org.springframework.web.reactive.function.server.ServerRequest;
 import org.springframework.web.reactive.function.server.ServerResponse;
+import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 import java.util.ArrayList;
@@ -124,9 +128,29 @@ public class EndpointAdapter {
 
         Mono bodySource = null;
 
-        if (req.method() != HttpMethod.GET){
-            bodySource = req.bodyToMono(reqPayloadType);
+        if (req.method() == HttpMethod.POST && req.multipartData() != null){
+            req.body(BodyExtractors.toMultipartData())
+                    .map(
+                            items -> {
+                                log.info("items");
+                                return wrapRequestEnvelope(req).apply(items.values());
+                            }
+                    )
+                    .map(
+                            prepareRequestInput(typeToForward)
+                    )
+                    .subscribe(
+                            data -> {
+                                log.info("files received");
+                                dropRequestToIntlayer(reqId).accept(data);
+                            }
+                    );
+        } else {
+            if (req.method() != HttpMethod.GET){
+                bodySource = req.bodyToMono(reqPayloadType);
+            }
         }
+
 
         if (bodySource != null){
             // do async stuff when we need to
@@ -136,9 +160,12 @@ public class EndpointAdapter {
                     .subscribe  (   dropRequestToIntlayer   (reqId)              );
         } else {
             // when the request does not have a body things get simpler
-            RestRequestEnvelope requestEnvelope = wrapRequestEnvelope(req).apply(null);
-            Object requestToProcess = prepareRequestInput(typeToForward).apply(requestEnvelope);
-            dropRequestToIntlayer(reqId).accept(requestToProcess);
+            // but let's make sure we deal with certain types of request, for example GET
+            if (req.method() == HttpMethod.GET){
+                RestRequestEnvelope requestEnvelope = wrapRequestEnvelope(req).apply(null);
+                Object requestToProcess = prepareRequestInput(typeToForward).apply(requestEnvelope);
+                dropRequestToIntlayer(reqId).accept(requestToProcess);
+            }
         }
     }
 

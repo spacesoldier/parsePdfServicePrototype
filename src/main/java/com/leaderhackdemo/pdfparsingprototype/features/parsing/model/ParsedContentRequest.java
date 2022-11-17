@@ -5,5 +5,6 @@ import lombok.Data;
 
 @Data @Builder
 public class ParsedContentRequest {
+    private String requestId;
     private String documentId;
 }

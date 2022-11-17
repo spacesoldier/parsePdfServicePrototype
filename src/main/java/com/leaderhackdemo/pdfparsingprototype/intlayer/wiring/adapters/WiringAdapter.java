@@ -4,6 +4,8 @@ import lombok.Builder;
 import lombok.NonNull;
 import lombok.extern.slf4j.Slf4j;
 import org.jetbrains.annotations.NotNull;
+import reactor.core.CorePublisher;
+import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Scheduler;
 import reactor.core.scheduler.Schedulers;
@@ -354,29 +356,57 @@ public class WiringAdapter {
     // request processing may depend on results of the application initialization stage results
     public void receiveSingleRequest(String rqId, Object payload){
 
-        boolean clearToProcess = featureIsActive(payload.getClass());
+        if (payload instanceof CorePublisher<?>){
+            CorePublisher payloadSource = ((CorePublisher<?>) payload);
 
-        if (clearToProcess){
-            if (incomingMsgSink != null){
-                // it is important to start processing the messages in a separate thread pool
-                // otherwise the current thread could be a bit overloaded by all messages coming here
-                // and believe me this is the one of the key points of the whole application built on top
-                incomingRequests.schedule(
-                        () -> incomingMsgSink.accept(rqId,payload)
+            if (payloadSource instanceof Flux<?>){
+                Flux dataFlux = (Flux) payloadSource;
+                dataFlux.subscribe(
+                        realPayload -> {
+                            // we need to obtain new request id here
+                            // otherwise router will terminate processing
+                            // after receiving the first result matching
+                            // someone's mono channel id
+                            String newRqId = UUID.randomUUID().toString();
+                            receiveSingleRequest(newRqId,realPayload);
+                        }
+                );
+            } else if (payloadSource instanceof Mono<?>){
+                Mono dataMono = (Mono) payloadSource;
+                dataMono.subscribe(
+                        realPayload -> {
+                            receiveSingleRequest(rqId,realPayload);
+                        }
                 );
             }
+
         } else {
-            log.info(
-                    String.format(
-                            pauseProcessMsgTemplate,
-                            payload.getClass().getSimpleName(),
-                            rqId
-                    )
-            );
-            if (!isRequestInPausedQueue(rqId)){
-                pauseRequest(rqId,payload);
+            boolean clearToProcess = featureIsActive(payload.getClass());
+
+            if (clearToProcess){
+                if (incomingMsgSink != null){
+                    // it is important to start processing the messages in a separate thread pool
+                    // otherwise the current thread could be a bit overloaded by all messages coming here
+                    // and believe me this is the one of the key points of the whole application built on top
+                    incomingRequests.schedule(
+                            () -> {
+                                incomingMsgSink.accept(rqId,payload);
+                            }
+                    );
+                }
             } else {
-                log.info("[WIRING]: request "+ rqId + " still on pause");
+                log.info(
+                        String.format(
+                                pauseProcessMsgTemplate,
+                                payload.getClass().getSimpleName(),
+                                rqId
+                        )
+                );
+                if (!isRequestInPausedQueue(rqId)){
+                    pauseRequest(rqId,payload);
+                } else {
+                    log.info("[WIRING]: request "+ rqId + " still on pause");
+                }
             }
         }
     }
