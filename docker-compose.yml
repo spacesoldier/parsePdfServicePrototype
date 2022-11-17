@@ -4,7 +4,7 @@ services:
     image: silviosalgari/pdf-parser-service-proto:latest
     container_name: pdf-parsing-proto
     ports:
-      - 8999:8080
+      - 8999:8082
 
 networks:
   default:
