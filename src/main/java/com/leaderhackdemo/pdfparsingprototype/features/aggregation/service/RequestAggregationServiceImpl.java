@@ -46,20 +46,22 @@ public class RequestAggregationServiceImpl implements RequestAggregationService{
                             )
                             .build());
         } else {
-            ServiceAggregationInfo aggregate = requestsData.get(notification.getRequestId());
 
-            aggregate.getPartsReady().add(notification.getPartInfo());
 
-            if (aggregate.getPartsReady().size() == aggregate.getPartsTotal()){
-                log.info("[AGGREGATION]: process completed for request "+notification.getRequestId());
-                result = LoadPdfFilesResponse.builder()
-                                                        .requestId(notification.getRequestId())
-                                                        .processResults(
-                                                                aggregate.getPartsReady()
-                                                        )
-                                            .build();
-            }
+            requestsData.get(notification.getRequestId()).getPartsReady().add(notification.getPartInfo());
 
+        }
+
+        ServiceAggregationInfo aggregate = requestsData.get(notification.getRequestId());
+
+        if (aggregate.getPartsReady().size() == aggregate.getPartsTotal()){
+            log.info("[AGGREGATION]: process completed for request "+notification.getRequestId());
+            result = LoadPdfFilesResponse.builder()
+                    .requestId(notification.getRequestId())
+                    .processResults(
+                            aggregate.getPartsReady()
+                    )
+                    .build();
         }
 
         return result;
